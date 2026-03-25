@@ -66,12 +66,15 @@ const state = {
   filterStatus: "全部",
   showCompleted: false,
   searchKeyword: "",
-  isAdmin: false
+  isAdmin: false,
+  isApproved: false,
+  pendingApprovals: []
 };
 
 const elements = {
   loginPanel: document.querySelector("#login-panel"),
   appPanel: document.querySelector("#app-panel"),
+  accessPanel: document.querySelector("#access-panel"),
   loginMessage: document.querySelector("#login-message"),
   authStatusPill: document.querySelector("#auth-status-pill"),
   signOutButton: document.querySelector("#sign-out-button"),
@@ -86,13 +89,19 @@ const elements = {
   adminPasswordInput: document.querySelector("#admin-password-input"),
   adminDisplayNameInput: document.querySelector("#admin-display-name-input"),
   adminCreateUserButton: document.querySelector("#admin-create-user-button"),
+  approvalRefreshButton: document.querySelector("#approval-refresh-button"),
+  approvalList: document.querySelector("#approval-list"),
+  toolbar: document.querySelector("#toolbar"),
   searchInput: document.querySelector("#search-input"),
   statusFilter: document.querySelector("#status-filter"),
   showCompleted: document.querySelector("#show-completed"),
   refreshButton: document.querySelector("#refresh-button"),
+  summaryGrid: document.querySelector("#summary-grid"),
   totalCount: document.querySelector("#total-count"),
   visibleCount: document.querySelector("#visible-count"),
   statusSummary: document.querySelector("#status-summary"),
+  tableMeta: document.querySelector("#table-meta"),
+  tableShell: document.querySelector("#table-shell"),
   dataStatus: document.querySelector("#data-status"),
   recordsBody: document.querySelector("#records-body"),
   detailDialog: document.querySelector("#detail-dialog"),
@@ -152,6 +161,19 @@ function setAdminMessage(message, isError = false) {
   elements.adminMessage.style.color = isError ? "#8a2222" : "";
 }
 
+function setAccessMessage(message, isError = false) {
+  if (!message) {
+    elements.accessPanel.classList.add("hidden");
+    elements.accessPanel.textContent = "";
+    return;
+  }
+
+  elements.accessPanel.classList.remove("hidden");
+  elements.accessPanel.textContent = message;
+  elements.accessPanel.style.background = isError ? "rgba(168, 46, 46, 0.12)" : "";
+  elements.accessPanel.style.color = isError ? "#8a2222" : "";
+}
+
 function setDataStatus(message) {
   elements.dataStatus.textContent = message;
 }
@@ -190,7 +212,7 @@ function getFunctionErrorMessage(error) {
   const code = error?.code || "";
 
   if (code.includes("permission-denied")) {
-    return "你不是管理員，無法建立帳號。";
+    return "你沒有管理員權限。";
   }
 
   if (code.includes("already-exists")) {
@@ -210,6 +232,14 @@ function getFunctionErrorMessage(error) {
   }
 
   return error?.message || "操作失敗，請稍後再試。";
+}
+
+function setViewerEnabled(enabled) {
+  const method = enabled ? "remove" : "add";
+  elements.toolbar.classList[method]("hidden");
+  elements.summaryGrid.classList[method]("hidden");
+  elements.tableMeta.classList[method]("hidden");
+  elements.tableShell.classList[method]("hidden");
 }
 
 function populateStatusFilter() {
@@ -268,6 +298,31 @@ function renderTable() {
         <td class="cell-note">${escapeHtml(record["其餘備註"] || "")}</td>
         <td><button class="table-button" type="button" data-record-id="${escapeHtml(record.id)}">查看</button></td>
       </tr>
+    `)
+    .join("");
+}
+
+function renderPendingApprovals() {
+  if (!state.pendingApprovals.length) {
+    elements.approvalList.innerHTML = '<div class="empty-state">目前沒有待審核帳號</div>';
+    return;
+  }
+
+  elements.approvalList.innerHTML = state.pendingApprovals
+    .map((item) => `
+      <article class="approval-card">
+        <div>
+          <strong>${escapeHtml(item.email || "未提供 Email")}</strong>
+          <p class="approval-meta">
+            ${escapeHtml(item.displayName || "未填顯示名稱")}<br>
+            登入方式：${escapeHtml(item.provider || "未知")}<br>
+            UID：${escapeHtml(item.uid || "")}
+          </p>
+        </div>
+        <div class="approval-actions">
+          <button class="primary-button" type="button" data-approve-uid="${escapeHtml(item.uid || "")}">核准</button>
+        </div>
+      </article>
     `)
     .join("");
 }
@@ -336,29 +391,76 @@ async function loadRecords() {
   }
 }
 
-async function resolveAdminStatus() {
-  state.isAdmin = false;
-  elements.adminPanel.classList.add("hidden");
-  setAdminMessage("");
-
-  if (!functions) {
+async function refreshPendingApprovals() {
+  if (!state.isAdmin || !functions) {
     return;
   }
 
   try {
-    const getAdminStatus = httpsCallable(functions, "getAdminStatus");
-    const result = await getAdminStatus();
+    const listPendingApprovals = httpsCallable(functions, "listPendingApprovals");
+    const result = await listPendingApprovals();
+    state.pendingApprovals = Array.isArray(result.data?.items) ? result.data.items : [];
+    renderPendingApprovals();
+  } catch (error) {
+    console.error(error);
+    setAdminMessage(`待審核名單讀取失敗：${getFunctionErrorMessage(error)}`, true);
+  }
+}
+
+async function resolveAccessStatus() {
+  state.isAdmin = false;
+  state.isApproved = false;
+  state.pendingApprovals = [];
+  elements.adminPanel.classList.add("hidden");
+  setViewerEnabled(false);
+  renderEmpty("權限確認中...");
+  setAdminMessage("");
+  setAccessMessage("");
+
+  if (!functions) {
+    return false;
+  }
+
+  try {
+    const getAccessStatus = httpsCallable(functions, "getAccessStatus");
+    const result = await getAccessStatus();
     state.isAdmin = Boolean(result.data?.isAdmin);
+    state.isApproved = Boolean(result.data?.isApproved || state.isAdmin);
 
     if (state.isAdmin) {
       elements.adminPanel.classList.remove("hidden");
-      if (result.data?.bootstrapped) {
-        setAdminMessage("已建立第一位管理員。你現在可以直接新增 Email/Password 帳號。");
+      await auth.currentUser?.getIdToken(true);
+      await refreshPendingApprovals();
+
+      if (result.data?.bootstrappedAdmin) {
+        setAdminMessage("你已成為第一位管理員，並已自動核准。現在可以審核其他 Google 使用者。");
+      } else {
+        setAdminMessage("你是管理員，可核准 Google 登入使用者並建立 Email/Password 帳號。");
       }
+
+      setViewerEnabled(true);
+      return true;
     }
+
+    if (state.isApproved) {
+      await auth.currentUser?.getIdToken(true);
+      setViewerEnabled(true);
+      setAccessMessage("帳號已核准，可瀏覽資料。");
+      return true;
+    }
+
+    setViewerEnabled(false);
+    setAccessMessage("你的 Google 帳號已送出審核，請等待管理員核准後再重新登入。");
+    setDataStatus("帳號待審核");
+    renderEmpty("帳號待審核中，管理員核准後才能瀏覽資料");
+    return false;
   } catch (error) {
     console.error(error);
-    setAdminMessage(getFunctionErrorMessage(error), true);
+    setViewerEnabled(false);
+    setAccessMessage(`權限確認失敗：${getFunctionErrorMessage(error)}`, true);
+    setDataStatus("權限確認失敗");
+    renderEmpty("無法確認帳號權限");
+    return false;
   }
 }
 
@@ -403,7 +505,7 @@ async function handleSignOut() {
   }
 }
 
-function handleAuthState(user) {
+async function handleAuthState(user) {
   if (!user) {
     elements.loginPanel.classList.remove("hidden");
     elements.appPanel.classList.add("hidden");
@@ -412,6 +514,8 @@ function handleAuthState(user) {
     elements.authStatusPill.textContent = "未登入";
     setLoginMessage("請輸入已建立的 Firebase 帳號密碼登入。");
     setAdminMessage("");
+    setAccessMessage("");
+    setViewerEnabled(false);
     renderEmpty("尚未登入");
     setDataStatus("等待登入後載入資料");
     return;
@@ -421,8 +525,10 @@ function handleAuthState(user) {
   elements.appPanel.classList.remove("hidden");
   elements.signOutButton.classList.remove("hidden");
   elements.authStatusPill.textContent = `${user.email || user.displayName || "已登入"}`;
-  resolveAdminStatus();
-  loadRecords();
+  const canRead = await resolveAccessStatus();
+  if (canRead) {
+    loadRecords();
+  }
 }
 
 async function handleCreateUser(event) {
@@ -460,11 +566,29 @@ async function handleCreateUser(event) {
   }
 }
 
+async function handleApproveUser(uid) {
+  if (!uid) {
+    return;
+  }
+
+  try {
+    setAdminMessage("核准中...");
+    const approvePendingUser = httpsCallable(functions, "approvePendingUser");
+    const result = await approvePendingUser({ uid });
+    setAdminMessage(`已核准：${result.data?.email || uid}`);
+    await refreshPendingApprovals();
+  } catch (error) {
+    console.error(error);
+    setAdminMessage(`核准失敗：${getFunctionErrorMessage(error)}`, true);
+  }
+}
+
 function bindEvents() {
   elements.emailLoginForm.addEventListener("submit", handleEmailLogin);
   elements.googleLoginButton.addEventListener("click", handleGoogleLogin);
   elements.signOutButton.addEventListener("click", handleSignOut);
   elements.adminCreateUserForm.addEventListener("submit", handleCreateUser);
+  elements.approvalRefreshButton.addEventListener("click", refreshPendingApprovals);
 
   elements.searchInput.addEventListener("input", (event) => {
     state.searchKeyword = event.target.value.trim();
@@ -492,6 +616,18 @@ function bindEvents() {
     const recordId = target.getAttribute("data-record-id");
     if (recordId) {
       openDetail(recordId);
+    }
+  });
+
+  elements.approvalList.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+
+    const uid = target.getAttribute("data-approve-uid");
+    if (uid) {
+      handleApproveUser(uid);
     }
   });
 }

@@ -6,7 +6,7 @@
 - `docs/styles.css`：版面樣式
 - `docs/app.js`：Firebase Auth + Firestore 查詢邏輯
 - `docs/firebase-config.js`：Firebase Web App 設定檔，現在是樣板值
-- `functions/index.js`：管理員建立帳號的 Cloud Function
+- `functions/index.js`：管理員建立帳號、Google 待審核、核准權限的 Cloud Functions
 - `firebase.json`、`.firebaserc`：Firebase 部署設定
 
 ## 2. 你要在 Firebase Console 做的設定
@@ -22,27 +22,31 @@
 
 ### Firestore Rules
 
-你現在要的是「登入後可看，但不能改」，可以把規則改成：
+你現在要的是「只有已核准帳號可看，但不能改」，可以把規則改成：
 
 ```txt
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     match /materialOrders/{document} {
-      allow read: if request.auth != null;
+      allow read: if request.auth != null
+                  && (request.auth.token.approved == true
+                      || request.auth.token.admin == true);
       allow write: if false;
     }
   }
 }
 ```
 
-這樣未登入不能看，已登入只能讀取。
+這樣未登入不能看，只有已核准或管理員帳號才能讀取。
 
 ## 2-1. 管理員建立帳號功能
 
 這次已加入一個「管理員工具」區塊，功能是：
 
-- 用 Google 登入後可取得管理員資格
+- Google 登入後會進入待審核狀態
+- 管理員可看到待審核名單
+- 管理員核准後，該帳號才可瀏覽資料
 - 管理員可在網頁直接建立新的 Email/Password 帳號
 
 注意：
@@ -58,7 +62,7 @@ service cloud.firestore {
 - 第一個成功用 Google 登入並呼叫管理功能的人
 - 會自動成為第一位管理員
 
-之後只有已在 `webAdmins` 裡的使用者，才能繼續建立帳號。
+之後只有已在 `webAdmins` 裡的使用者，才能繼續建立帳號與審核其他 Google 使用者。
 
 ## 3. 你要改的檔案
 
@@ -120,7 +124,9 @@ firebase deploy --only functions
 
 部署完成後，GitHub Pages 前端就能呼叫：
 
-- `getAdminStatus`
+- `getAccessStatus`
+- `listPendingApprovals`
+- `approvePendingUser`
 - `createAuthUser`
 
 ## 6. 目前網頁功能
@@ -131,6 +137,8 @@ firebase deploy --only functions
 - 狀態篩選
 - 預設隱藏 `已完工`
 - 點擊 `查看` 可看完整欄位
+- Google 登入待管理員審核
+- 管理員可核准待審核帳號
 - 管理員可建立新的 Email/Password 帳號
 
 ## 7. 注意

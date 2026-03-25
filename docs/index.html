@@ -65,7 +65,9 @@
         </section>
 
         <section class="panel app-panel hidden" id="app-panel">
-          <div class="toolbar">
+          <section class="message-box hidden" id="access-panel"></section>
+
+          <div class="toolbar" id="toolbar">
             <div class="toolbar-block">
               <label class="search-field">
                 <span>搜尋</span>
@@ -86,7 +88,7 @@
             </div>
           </div>
 
-          <section class="summary-grid">
+          <section class="summary-grid" id="summary-grid">
             <article class="summary-card accent">
               <span class="summary-label">總筆數</span>
               <strong id="total-count">0</strong>
@@ -129,13 +131,26 @@
             </form>
 
             <div class="message-box hidden" id="admin-message"></div>
+
+            <div class="approval-section">
+              <div class="approval-header">
+                <div>
+                  <p class="panel-kicker">待審核</p>
+                  <h3>Google 登入待核准名單</h3>
+                </div>
+                <button class="ghost-button" id="approval-refresh-button" type="button">重新整理名單</button>
+              </div>
+              <div class="approval-list" id="approval-list">
+                <div class="empty-state">尚未載入待審核名單</div>
+              </div>
+            </div>
           </section>
 
-          <div class="table-meta">
+          <div class="table-meta" id="table-meta">
             <p id="data-status">等待登入後載入資料</p>
           </div>
 
-          <div class="table-shell">
+          <div class="table-shell" id="table-shell">
             <table>
               <thead>
                 <tr>
