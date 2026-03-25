@@ -91,9 +91,12 @@ const elements = {
 let auth;
 let db;
 
-function hasPlaceholderConfig() {
+function hasMissingConfig() {
   const { config } = firebaseSettings;
-  return Object.values(config).some((value) => String(value).includes("YOUR_"));
+  return ["apiKey", "projectId", "messagingSenderId", "appId"].some((key) => {
+    const value = String(config[key] ?? "").trim();
+    return !value || value.includes("YOUR_");
+  });
 }
 
 function escapeHtml(value) {
@@ -347,9 +350,9 @@ function boot() {
   populateStatusFilter();
   bindEvents();
 
-  if (hasPlaceholderConfig()) {
+  if (hasMissingConfig()) {
     setLoginMessage(
-      "請先編輯 docs/firebase-config.js，填入 Firebase Web App 的 apiKey、authDomain、appId 等資訊。",
+      "請先編輯 docs/firebase-config.js，至少填入 apiKey、messagingSenderId、appId。",
       true
     );
     elements.googleLoginButton.disabled = true;
@@ -357,7 +360,13 @@ function boot() {
     return;
   }
 
-  const app = initializeApp(firebaseSettings.config);
+  const normalizedConfig = {
+    ...firebaseSettings.config,
+    authDomain: firebaseSettings.config.authDomain || `${firebaseSettings.config.projectId}.firebaseapp.com`,
+    storageBucket: firebaseSettings.config.storageBucket || `${firebaseSettings.config.projectId}.appspot.com`
+  };
+
+  const app = initializeApp(normalizedConfig);
   auth = getAuth(app);
   db = getFirestore(app);
 
