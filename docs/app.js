@@ -130,6 +130,36 @@ function setDataStatus(message) {
   elements.dataStatus.textContent = message;
 }
 
+function getAuthErrorMessage(error) {
+  const code = error?.code || "";
+
+  if (code === "auth/invalid-credential" || code === "auth/invalid-login-credentials") {
+    return "帳號或密碼錯誤，或這個 Email 尚未建立。";
+  }
+
+  if (code === "auth/user-disabled") {
+    return "這個帳號已被停用。";
+  }
+
+  if (code === "auth/too-many-requests") {
+    return "嘗試次數過多，請稍後再試。";
+  }
+
+  if (code === "auth/network-request-failed") {
+    return "網路連線失敗，請稍後再試。";
+  }
+
+  if (code === "auth/unauthorized-domain") {
+    return "目前網域未加入 Firebase Authorized domains。";
+  }
+
+  if (code === "auth/popup-closed-by-user") {
+    return "登入視窗已被關閉。";
+  }
+
+  return error?.message || "登入失敗，請稍後再試。";
+}
+
 function populateStatusFilter() {
   elements.statusFilter.innerHTML = ["全部", ...CONTACT_STATUSES]
     .map((status) => `<option value="${status}">${status}</option>`)
@@ -271,7 +301,7 @@ async function handleEmailLogin(event) {
     elements.passwordInput.value = "";
   } catch (error) {
     console.error(error);
-    setLoginMessage(`登入失敗：${error.message}`, true);
+    setLoginMessage(`登入失敗：${getAuthErrorMessage(error)}`, true);
   }
 }
 
@@ -282,7 +312,7 @@ async function handleGoogleLogin() {
     setLoginMessage("Google 登入成功。");
   } catch (error) {
     console.error(error);
-    setLoginMessage(`Google 登入失敗：${error.message}`, true);
+    setLoginMessage(`Google 登入失敗：${getAuthErrorMessage(error)}`, true);
   }
 }
 
