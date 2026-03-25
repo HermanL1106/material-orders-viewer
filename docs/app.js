@@ -265,6 +265,7 @@ async function handleEmailLogin(event) {
   }
 
   try {
+    setLoginMessage("登入中...");
     await signInWithEmailAndPassword(auth, email, password);
     setLoginMessage("登入成功。");
     elements.passwordInput.value = "";
@@ -276,6 +277,7 @@ async function handleEmailLogin(event) {
 
 async function handleGoogleLogin() {
   try {
+    setLoginMessage("Google 登入中...");
     await signInWithPopup(auth, new GoogleAuthProvider());
     setLoginMessage("Google 登入成功。");
   } catch (error) {
@@ -299,6 +301,7 @@ function handleAuthState(user) {
     elements.appPanel.classList.add("hidden");
     elements.signOutButton.classList.add("hidden");
     elements.authStatusPill.textContent = "未登入";
+    setLoginMessage("請輸入已建立的 Firebase 帳號密碼登入。");
     renderEmpty("尚未登入");
     setDataStatus("等待登入後載入資料");
     return;
@@ -360,25 +363,32 @@ function boot() {
     return;
   }
 
-  const normalizedConfig = {
-    ...firebaseSettings.config,
-    authDomain: firebaseSettings.config.authDomain || `${firebaseSettings.config.projectId}.firebaseapp.com`,
-    storageBucket: firebaseSettings.config.storageBucket || `${firebaseSettings.config.projectId}.appspot.com`
-  };
+  try {
+    const normalizedConfig = {
+      ...firebaseSettings.config,
+      authDomain: firebaseSettings.config.authDomain || `${firebaseSettings.config.projectId}.firebaseapp.com`,
+      storageBucket: firebaseSettings.config.storageBucket || `${firebaseSettings.config.projectId}.appspot.com`
+    };
 
-  const app = initializeApp(normalizedConfig);
-  auth = getAuth(app);
-  db = getFirestore(app);
+    const app = initializeApp(normalizedConfig);
+    auth = getAuth(app);
+    db = getFirestore(app);
 
-  if (!firebaseSettings.authProviders.google) {
-    elements.googleLoginButton.classList.add("hidden");
+    if (!firebaseSettings.authProviders.google) {
+      elements.googleLoginButton.classList.add("hidden");
+    }
+
+    if (!firebaseSettings.authProviders.emailPassword) {
+      elements.emailLoginForm.classList.add("hidden");
+    }
+
+    onAuthStateChanged(auth, handleAuthState);
+  } catch (error) {
+    console.error(error);
+    setLoginMessage(`Firebase 初始化失敗：${error.message}`, true);
+    elements.googleLoginButton.disabled = true;
+    elements.emailLoginForm.querySelector("button").disabled = true;
   }
-
-  if (!firebaseSettings.authProviders.emailPassword) {
-    elements.emailLoginForm.classList.add("hidden");
-  }
-
-  onAuthStateChanged(auth, handleAuthState);
 }
 
 boot();
