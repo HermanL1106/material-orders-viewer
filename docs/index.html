@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>叫料記錄查詢</title>
+    <meta name="description" content="叫料記錄唯讀查詢頁面，支援 Firebase 登入與 Firestore 瀏覽。">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">GitHub Pages + Firebase</p>
+          <h1>叫料記錄查詢</h1>
+          <p class="hero-copy">
+            保留原本桌面版的搜尋、篩選與狀態瀏覽，網頁端僅提供唯讀查詢，不開放編輯。
+          </p>
+        </div>
+        <div class="hero-status">
+          <span class="status-pill" id="auth-status-pill">未登入</span>
+          <button class="ghost-button hidden" id="sign-out-button" type="button">登出</button>
+        </div>
+      </header>
+
+      <main class="dashboard">
+        <section class="panel login-panel" id="login-panel">
+          <div class="panel-heading">
+            <div>
+              <p class="panel-kicker">登入</p>
+              <h2>先驗證身份才能讀取資料</h2>
+            </div>
+            <p class="panel-note">
+              建議在 Firebase 開啟 Email/Password 或 Google 登入，並把 GitHub Pages 網域加入 Authorized domains。
+            </p>
+          </div>
+
+          <div class="auth-grid">
+            <form id="email-login-form" class="auth-card">
+              <h3>Email / Password</h3>
+              <label>
+                <span>Email</span>
+                <input id="email-input" type="email" autocomplete="username" placeholder="name@example.com">
+              </label>
+              <label>
+                <span>Password</span>
+                <input id="password-input" type="password" autocomplete="current-password" placeholder="輸入密碼">
+              </label>
+              <button class="primary-button" type="submit">Email 登入</button>
+            </form>
+
+            <div class="auth-card">
+              <h3>Google</h3>
+              <p>若你在 Firebase Authentication 已啟用 Google Provider，可直接用 Google 帳號登入。</p>
+              <button class="secondary-button" id="google-login-button" type="button">Google 登入</button>
+            </div>
+          </div>
+
+          <div class="message-box" id="login-message">
+            請先完成 `firebase-config.js` 設定。
+          </div>
+        </section>
+
+        <section class="panel app-panel hidden" id="app-panel">
+          <div class="toolbar">
+            <div class="toolbar-block">
+              <label class="search-field">
+                <span>搜尋</span>
+                <input id="search-input" type="search" placeholder="車牌、聯絡人、電話、估價單號、備註">
+              </label>
+            </div>
+
+            <div class="toolbar-block compact">
+              <label class="inline-field">
+                <span>狀態</span>
+                <select id="status-filter"></select>
+              </label>
+              <label class="checkbox-field">
+                <input id="show-completed" type="checkbox">
+                <span>顯示已完工</span>
+              </label>
+              <button class="ghost-button" id="refresh-button" type="button">重新整理</button>
+            </div>
+          </div>
+
+          <section class="summary-grid">
+            <article class="summary-card accent">
+              <span class="summary-label">總筆數</span>
+              <strong id="total-count">0</strong>
+            </article>
+            <article class="summary-card">
+              <span class="summary-label">目前顯示</span>
+              <strong id="visible-count">0</strong>
+            </article>
+            <article class="summary-card wide">
+              <span class="summary-label">狀態統計</span>
+              <div id="status-summary" class="summary-inline">尚未載入資料</div>
+            </article>
+          </section>
+
+          <div class="table-meta">
+            <p id="data-status">等待登入後載入資料</p>
+          </div>
+
+          <div class="table-shell">
+            <table>
+              <thead>
+                <tr>
+                  <th>序</th>
+                  <th>日期</th>
+                  <th>工程師</th>
+                  <th>車牌號碼</th>
+                  <th>聯繫人</th>
+                  <th>電話</th>
+                  <th>事項</th>
+                  <th>估價單號</th>
+                  <th>訂金</th>
+                  <th>聯繫狀態</th>
+                  <th>最後聯繫日</th>
+                  <th>料件備註</th>
+                  <th>其餘備註</th>
+                  <th>詳細</th>
+                </tr>
+              </thead>
+              <tbody id="records-body">
+                <tr>
+                  <td colspan="14" class="empty-state">尚未登入</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="detail-dialog" class="detail-dialog">
+      <form method="dialog" class="detail-card">
+        <div class="detail-header">
+          <div>
+            <p class="panel-kicker">詳細資料</p>
+            <h3 id="detail-title">叫料記錄</h3>
+          </div>
+          <button class="ghost-button" type="submit">關閉</button>
+        </div>
+        <div id="detail-grid" class="detail-grid"></div>
+      </form>
+    </dialog>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
