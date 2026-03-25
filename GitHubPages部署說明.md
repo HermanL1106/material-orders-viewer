@@ -8,6 +8,7 @@
 - `docs/firebase-config.js`：Firebase Web App 設定檔，現在是樣板值
 - `functions/index.js`：管理員建立帳號、Google 待審核、核准權限的 Cloud Functions
 - `firebase.json`、`.firebaserc`：Firebase 部署設定
+- `firestore.rules`：已核准帳號才能讀資料的 Firestore 規則
 
 ## 2. 你要在 Firebase Console 做的設定
 
@@ -120,6 +121,20 @@ firebase login
 ```bash
 cd /Users/herman/FIle
 firebase deploy --only functions
+```
+
+部署 Firestore rules：
+
+```bash
+cd /Users/herman/FIle
+firebase deploy --only firestore:rules
+```
+
+如果你要一次全部更新：
+
+```bash
+cd /Users/herman/FIle
+firebase deploy --only functions,firestore:rules
 ```
 
 部署完成後，GitHub Pages 前端就能呼叫：
