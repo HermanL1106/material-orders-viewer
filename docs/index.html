@@ -107,28 +107,12 @@
             <div class="panel-heading">
               <div>
                 <p class="panel-kicker">管理員工具</p>
-                <h2>建立新的登入帳號</h2>
+                <h2>Google 登入審核</h2>
               </div>
               <p class="panel-note">
-                只有管理員可建立新的 Email/Password 帳號。你目前是用 Google 登入，之後可在這裡新增其他可登入成員。
+                目前使用 Spark 方案，不走 Cloud Functions。管理員可直接在這裡核准 Google 登入帳號，核准後才可瀏覽資料。
               </p>
             </div>
-
-            <form id="admin-create-user-form" class="admin-grid">
-              <label class="auth-card">
-                <span>Email</span>
-                <input id="admin-email-input" type="email" autocomplete="off" placeholder="new-user@example.com" required>
-              </label>
-              <label class="auth-card">
-                <span>密碼</span>
-                <input id="admin-password-input" type="text" minlength="6" autocomplete="off" placeholder="至少 6 碼" required>
-              </label>
-              <label class="auth-card admin-grid-wide">
-                <span>顯示名稱</span>
-                <input id="admin-display-name-input" type="text" autocomplete="off" placeholder="選填，例如：倉管 A">
-              </label>
-              <button class="primary-button admin-submit" id="admin-create-user-button" type="submit">建立帳號</button>
-            </form>
 
             <div class="message-box hidden" id="admin-message"></div>
 

@@ -1,23 +1,40 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/webAdmins/$(request.auth.uid));
+    }
+
+    function hasApprovedAccess() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/accessApprovals/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/accessApprovals/$(request.auth.uid)).data.status == "approved";
+    }
+
     match /materialOrders/{document} {
-      allow read: if request.auth != null
-                  && (request.auth.token.approved == true
-                      || request.auth.token.admin == true);
+      allow read: if isAdmin() || hasApprovedAccess();
       allow write: if false;
     }
 
     match /webAdmins/{document} {
-      allow read: if request.auth != null && request.auth.token.admin == true;
+      allow read: if isSignedIn() && (request.auth.uid == document || isAdmin());
       allow write: if false;
     }
 
     match /accessApprovals/{document} {
-      allow read: if request.auth != null
-                  && (request.auth.token.admin == true
-                      || request.auth.uid == document);
-      allow write: if false;
+      allow read: if isSignedIn() && (request.auth.uid == document || isAdmin());
+      allow create: if isSignedIn()
+                    && request.auth.uid == document
+                    && !exists(/databases/$(database)/documents/accessApprovals/$(document))
+                    && request.resource.data.status == "pending"
+                    && request.resource.data.email == request.auth.token.email;
+      allow update: if isAdmin();
+      allow delete: if false;
     }
   }
 }

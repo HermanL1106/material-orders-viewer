@@ -6,7 +6,7 @@
 - `docs/styles.css`：版面樣式
 - `docs/app.js`：Firebase Auth + Firestore 查詢邏輯
 - `docs/firebase-config.js`：Firebase Web App 設定檔，現在是樣板值
-- `functions/index.js`：管理員建立帳號、Google 待審核、核准權限的 Cloud Functions
+- `functions/index.js`：保留的 Functions 範例
 - `firebase.json`、`.firebaserc`：Firebase 部署設定
 - `firestore.rules`：已核准帳號才能讀資料的 Firestore 規則
 
@@ -23,16 +23,19 @@
 
 ### Firestore Rules
 
-你現在要的是「只有已核准帳號可看，但不能改」，可以把規則改成：
+你現在要的是「只有已核准帳號可看，但不能改」，專案內已提供 `firestore.rules`，核心邏輯是：
 
 ```txt
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    function isAdmin() {
+      return request.auth != null &&
+        exists(/databases/$(database)/documents/webAdmins/$(request.auth.uid));
+    }
+
     match /materialOrders/{document} {
-      allow read: if request.auth != null
-                  && (request.auth.token.approved == true
-                      || request.auth.token.admin == true);
+      allow read: if isAdmin() || 已核准 accessApprovals 文件存在;
       allow write: if false;
     }
   }
@@ -47,23 +50,29 @@ service cloud.firestore {
 
 - Google 登入後會進入待審核狀態
 - 管理員可看到待審核名單
-- 管理員核准後，該帳號才可瀏覽資料
-- 管理員可在網頁直接建立新的 Email/Password 帳號
+- 管理員可直接在網頁核准帳號
+- 核准後該帳號才可瀏覽資料
 
-注意：
+這個版本改成純前端 + Firestore rules，不再依賴 Blaze。
 
-- 這個功能不是純 GitHub Pages 前端完成
-- 它需要另外部署 Firebase Cloud Functions
+### 第一位管理員設定方式
 
-### 第一位管理員規則
+這版沒有用 Cloud Functions 自動升管理員，所以第一位管理員要手動建立：
 
-目前程式設計是：
+1. 先用你的 Google 帳號登入網站
+2. 畫面會顯示你的使用者 UID
+3. 到 Firestore Console
+4. 建立集合 `webAdmins`
+5. 建立文件 ID = 你的 UID
+6. 文件內容可放：
 
-- `webAdmins` 集合裡如果還沒有任何管理員
-- 第一個成功用 Google 登入並呼叫管理功能的人
-- 會自動成為第一位管理員
+```json
+{
+  "email": "你的 Google Email"
+}
+```
 
-之後只有已在 `webAdmins` 裡的使用者，才能繼續建立帳號與審核其他 Google 使用者。
+完成後重新登入，你就會成為管理員。
 
 ## 3. 你要改的檔案
 
@@ -102,47 +111,18 @@ export const firebaseSettings = {
 
 完成後 GitHub 會給你一個網址。
 
-## 5. Cloud Functions 部署方式
-
-你的電腦要先安裝 Firebase CLI：
-
-```bash
-npm install -g firebase-tools
-```
-
-登入：
-
-```bash
-firebase login
-```
-
-在專案目錄部署 Functions：
-
-```bash
-cd /Users/herman/FIle
-firebase deploy --only functions
-```
-
-部署 Firestore rules：
+## 5. 部署 Firestore rules
 
 ```bash
 cd /Users/herman/FIle
 firebase deploy --only firestore:rules
 ```
 
-如果你要一次全部更新：
+如果你要連網站一起更新：
 
 ```bash
-cd /Users/herman/FIle
-firebase deploy --only functions,firestore:rules
+git push origin main
 ```
-
-部署完成後，GitHub Pages 前端就能呼叫：
-
-- `getAccessStatus`
-- `listPendingApprovals`
-- `approvePendingUser`
-- `createAuthUser`
 
 ## 6. 目前網頁功能
 
@@ -154,7 +134,6 @@ firebase deploy --only functions,firestore:rules
 - 點擊 `查看` 可看完整欄位
 - Google 登入待管理員審核
 - 管理員可核准待審核帳號
-- 管理員可建立新的 Email/Password 帳號
 
 ## 7. 注意
 

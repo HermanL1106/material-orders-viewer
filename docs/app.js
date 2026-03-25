@@ -9,13 +9,16 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
 import {
   getFirestore,
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  serverTimestamp,
+  query,
+  where,
   collection,
   getDocs
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
-import {
-  getFunctions,
-  httpsCallable
-} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-functions.js";
 import { firebaseSettings } from "./firebase-config.js";
 
 const CONTACT_STATUSES = [
@@ -84,11 +87,6 @@ const elements = {
   googleLoginButton: document.querySelector("#google-login-button"),
   adminPanel: document.querySelector("#admin-panel"),
   adminMessage: document.querySelector("#admin-message"),
-  adminCreateUserForm: document.querySelector("#admin-create-user-form"),
-  adminEmailInput: document.querySelector("#admin-email-input"),
-  adminPasswordInput: document.querySelector("#admin-password-input"),
-  adminDisplayNameInput: document.querySelector("#admin-display-name-input"),
-  adminCreateUserButton: document.querySelector("#admin-create-user-button"),
   approvalRefreshButton: document.querySelector("#approval-refresh-button"),
   approvalList: document.querySelector("#approval-list"),
   toolbar: document.querySelector("#toolbar"),
@@ -111,7 +109,6 @@ const elements = {
 
 let auth;
 let db;
-let functions;
 
 function hasMissingConfig() {
   const { config } = firebaseSettings;
@@ -215,20 +212,8 @@ function getFunctionErrorMessage(error) {
     return "你沒有管理員權限。";
   }
 
-  if (code.includes("already-exists")) {
-    return "這個 Email 已存在。";
-  }
-
-  if (code.includes("invalid-argument")) {
-    return "資料格式不正確，請確認 Email 與密碼。";
-  }
-
-  if (code.includes("unauthenticated")) {
-    return "請先登入後再操作。";
-  }
-
-  if (code.includes("unavailable") || code.includes("not-found")) {
-    return "管理功能尚未部署完成，請先部署 Firebase Cloud Functions。";
+  if (code.includes("failed-precondition")) {
+    return "資料狀態不正確。";
   }
 
   return error?.message || "操作失敗，請稍後再試。";
@@ -392,19 +377,54 @@ async function loadRecords() {
 }
 
 async function refreshPendingApprovals() {
-  if (!state.isAdmin || !functions) {
+  if (!state.isAdmin) {
     return;
   }
 
   try {
-    const listPendingApprovals = httpsCallable(functions, "listPendingApprovals");
-    const result = await listPendingApprovals();
-    state.pendingApprovals = Array.isArray(result.data?.items) ? result.data.items : [];
+    const approvalsQuery = query(
+      collection(db, "accessApprovals"),
+      where("status", "==", "pending")
+    );
+    const snapshot = await getDocs(approvalsQuery);
+    state.pendingApprovals = snapshot.docs.map((docSnapshot) => {
+      const data = docSnapshot.data() || {};
+      const createdAt = data.createdAt?.toDate?.();
+      return {
+        uid: docSnapshot.id,
+        email: data.email || "",
+        displayName: data.displayName || "",
+        provider: data.provider || "",
+        createdAt: createdAt ? createdAt.toISOString() : ""
+      };
+    });
     renderPendingApprovals();
   } catch (error) {
     console.error(error);
     setAdminMessage(`待審核名單讀取失敗：${getFunctionErrorMessage(error)}`, true);
   }
+}
+
+async function ensureApprovalRequest(user) {
+  const approvalRef = doc(db, "accessApprovals", user.uid);
+  const approvalSnap = await getDoc(approvalRef);
+  const provider = user.providerData?.[0]?.providerId || "unknown";
+
+  if (!approvalSnap.exists()) {
+    await setDoc(approvalRef, {
+      email: user.email || "",
+      displayName: user.displayName || "",
+      provider,
+      status: "pending",
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+
+    return { isApproved: false, createdRequest: true };
+  }
+
+  const data = approvalSnap.data() || {};
+  return { isApproved: data.status === "approved", createdRequest: false };
 }
 
 async function resolveAccessStatus() {
@@ -417,40 +437,40 @@ async function resolveAccessStatus() {
   setAdminMessage("");
   setAccessMessage("");
 
-  if (!functions) {
-    return false;
-  }
-
   try {
-    const getAccessStatus = httpsCallable(functions, "getAccessStatus");
-    const result = await getAccessStatus();
-    state.isAdmin = Boolean(result.data?.isAdmin);
-    state.isApproved = Boolean(result.data?.isApproved || state.isAdmin);
+    const user = auth.currentUser;
+    if (!user) {
+      return false;
+    }
+
+    const adminRef = doc(db, "webAdmins", user.uid);
+    const adminSnap = await getDoc(adminRef);
+    state.isAdmin = adminSnap.exists();
+    state.isApproved = state.isAdmin;
 
     if (state.isAdmin) {
       elements.adminPanel.classList.remove("hidden");
-      await auth.currentUser?.getIdToken(true);
       await refreshPendingApprovals();
-
-      if (result.data?.bootstrappedAdmin) {
-        setAdminMessage("你已成為第一位管理員，並已自動核准。現在可以審核其他 Google 使用者。");
-      } else {
-        setAdminMessage("你是管理員，可核准 Google 登入使用者並建立 Email/Password 帳號。");
-      }
-
+      setAdminMessage("你是管理員，可直接核准待審核的 Google 登入帳號。");
+      setAccessMessage("管理員帳號已登入，可瀏覽資料並審核其他帳號。");
       setViewerEnabled(true);
       return true;
     }
 
+    const approvalState = await ensureApprovalRequest(user);
+    state.isApproved = approvalState.isApproved;
+
     if (state.isApproved) {
-      await auth.currentUser?.getIdToken(true);
       setViewerEnabled(true);
       setAccessMessage("帳號已核准，可瀏覽資料。");
       return true;
     }
 
     setViewerEnabled(false);
-    setAccessMessage("你的 Google 帳號已送出審核，請等待管理員核准後再重新登入。");
+    setAccessMessage(
+      `你的 Google 帳號已送出審核，請等待管理員核准後再重新登入。若你要把自己設為第一位管理員，請在 Firestore 建立文件 webAdmins/${user.uid}`,
+      true
+    );
     setDataStatus("帳號待審核");
     renderEmpty("帳號待審核中，管理員核准後才能瀏覽資料");
     return false;
@@ -531,41 +551,6 @@ async function handleAuthState(user) {
   }
 }
 
-async function handleCreateUser(event) {
-  event.preventDefault();
-
-  const email = elements.adminEmailInput.value.trim();
-  const password = elements.adminPasswordInput.value.trim();
-  const displayName = elements.adminDisplayNameInput.value.trim();
-
-  if (!email || !password) {
-    setAdminMessage("請輸入 Email 與密碼。", true);
-    return;
-  }
-
-  if (password.length < 6) {
-    setAdminMessage("密碼至少需要 6 碼。", true);
-    return;
-  }
-
-  try {
-    setAdminMessage("建立帳號中...");
-    elements.adminCreateUserButton.disabled = true;
-
-    const createAuthUser = httpsCallable(functions, "createAuthUser");
-    const result = await createAuthUser({ email, password, displayName });
-    const createdEmail = result.data?.email || email;
-
-    setAdminMessage(`建立成功：${createdEmail}`);
-    elements.adminCreateUserForm.reset();
-  } catch (error) {
-    console.error(error);
-    setAdminMessage(`建立失敗：${getFunctionErrorMessage(error)}`, true);
-  } finally {
-    elements.adminCreateUserButton.disabled = false;
-  }
-}
-
 async function handleApproveUser(uid) {
   if (!uid) {
     return;
@@ -573,9 +558,17 @@ async function handleApproveUser(uid) {
 
   try {
     setAdminMessage("核准中...");
-    const approvePendingUser = httpsCallable(functions, "approvePendingUser");
-    const result = await approvePendingUser({ uid });
-    setAdminMessage(`已核准：${result.data?.email || uid}`);
+    const approvalRef = doc(db, "accessApprovals", uid);
+    await updateDoc(approvalRef, {
+      status: "approved",
+      approvedAt: serverTimestamp(),
+      approvedBy: auth.currentUser?.uid || "",
+      approvedByEmail: auth.currentUser?.email || "",
+      updatedAt: serverTimestamp()
+    });
+    const approvalSnap = await getDoc(approvalRef);
+    const data = approvalSnap.data() || {};
+    setAdminMessage(`已核准：${data.email || uid}`);
     await refreshPendingApprovals();
   } catch (error) {
     console.error(error);
@@ -587,7 +580,6 @@ function bindEvents() {
   elements.emailLoginForm.addEventListener("submit", handleEmailLogin);
   elements.googleLoginButton.addEventListener("click", handleGoogleLogin);
   elements.signOutButton.addEventListener("click", handleSignOut);
-  elements.adminCreateUserForm.addEventListener("submit", handleCreateUser);
   elements.approvalRefreshButton.addEventListener("click", refreshPendingApprovals);
 
   elements.searchInput.addEventListener("input", (event) => {
@@ -656,7 +648,6 @@ function boot() {
     const app = initializeApp(normalizedConfig);
     auth = getAuth(app);
     db = getFirestore(app);
-    functions = getFunctions(app, firebaseSettings.functionsRegion || "asia-east1");
 
     if (!firebaseSettings.authProviders.google) {
       elements.googleLoginButton.classList.add("hidden");
