@@ -2,15 +2,14 @@ const projectId = "electric-bike-workorders";
 
 export const firebaseSettings = {
   config: {
-    // 這三個值無法從目前資料夾內的 Python 程式推回來，需到 Firebase Console > Project settings > Your apps 複製
-    apiKey: "",
-    messagingSenderId: "",
-    appId: "",
+    apiKey: "AIzaSyCJRG7xReo0_dx-ZaJhaUVIEU58JifmVAk",
+    messagingSenderId: "41212869744",
+    appId: "1:41212869744:web:be69af07e77e816efb88b5",
+    measurementId: "G-V3VTZZ0T59",
 
-    // 這些值可依現有專案 ID 推得
     authDomain: `${projectId}.firebaseapp.com`,
     projectId,
-    storageBucket: `${projectId}.appspot.com`
+    storageBucket: "electric-bike-workorders.firebasestorage.app"
   },
   collectionName: "materialOrders",
   authProviders: {
