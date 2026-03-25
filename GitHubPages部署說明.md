@@ -6,6 +6,8 @@
 - `docs/styles.css`：版面樣式
 - `docs/app.js`：Firebase Auth + Firestore 查詢邏輯
 - `docs/firebase-config.js`：Firebase Web App 設定檔，現在是樣板值
+- `functions/index.js`：管理員建立帳號的 Cloud Function
+- `firebase.json`、`.firebaserc`：Firebase 部署設定
 
 ## 2. 你要在 Firebase Console 做的設定
 
@@ -36,6 +38,28 @@ service cloud.firestore {
 
 這樣未登入不能看，已登入只能讀取。
 
+## 2-1. 管理員建立帳號功能
+
+這次已加入一個「管理員工具」區塊，功能是：
+
+- 用 Google 登入後可取得管理員資格
+- 管理員可在網頁直接建立新的 Email/Password 帳號
+
+注意：
+
+- 這個功能不是純 GitHub Pages 前端完成
+- 它需要另外部署 Firebase Cloud Functions
+
+### 第一位管理員規則
+
+目前程式設計是：
+
+- `webAdmins` 集合裡如果還沒有任何管理員
+- 第一個成功用 Google 登入並呼叫管理功能的人
+- 會自動成為第一位管理員
+
+之後只有已在 `webAdmins` 裡的使用者，才能繼續建立帳號。
+
 ## 3. 你要改的檔案
 
 打開 `docs/firebase-config.js`，把這些值換成 Firebase Web App 的實際設定：
@@ -44,12 +68,13 @@ service cloud.firestore {
 export const firebaseSettings = {
   config: {
     apiKey: "YOUR_API_KEY",
-    authDomain: "YOUR_PROJECT.firebaseapp.com",
+    authDomain: "electric-bike-workorders.firebaseapp.com",
     projectId: "electric-bike-workorders",
-    storageBucket: "YOUR_PROJECT.appspot.com",
+    storageBucket: "electric-bike-workorders.firebasestorage.app",
     messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
     appId: "YOUR_APP_ID"
   },
+  functionsRegion: "asia-east1",
   collectionName: "materialOrders",
   authProviders: {
     emailPassword: true,
@@ -72,7 +97,33 @@ export const firebaseSettings = {
 
 完成後 GitHub 會給你一個網址。
 
-## 5. 目前網頁功能
+## 5. Cloud Functions 部署方式
+
+你的電腦要先安裝 Firebase CLI：
+
+```bash
+npm install -g firebase-tools
+```
+
+登入：
+
+```bash
+firebase login
+```
+
+在專案目錄部署 Functions：
+
+```bash
+cd /Users/herman/FIle
+firebase deploy --only functions
+```
+
+部署完成後，GitHub Pages 前端就能呼叫：
+
+- `getAdminStatus`
+- `createAuthUser`
+
+## 6. 目前網頁功能
 
 - Firebase 登入
 - Firestore `materialOrders` 唯讀查詢
@@ -80,8 +131,9 @@ export const firebaseSettings = {
 - 狀態篩選
 - 預設隱藏 `已完工`
 - 點擊 `查看` 可看完整欄位
+- 管理員可建立新的 Email/Password 帳號
 
-## 6. 注意
+## 7. 注意
 
 這個版本故意沒有新增、修改、刪除功能。
 如果之後你要我再加：

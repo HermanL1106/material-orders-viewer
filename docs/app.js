@@ -12,6 +12,10 @@ import {
   collection,
   getDocs
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+import {
+  getFunctions,
+  httpsCallable
+} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-functions.js";
 import { firebaseSettings } from "./firebase-config.js";
 
 const CONTACT_STATUSES = [
@@ -61,7 +65,8 @@ const state = {
   filteredRecords: [],
   filterStatus: "全部",
   showCompleted: false,
-  searchKeyword: ""
+  searchKeyword: "",
+  isAdmin: false
 };
 
 const elements = {
@@ -74,6 +79,13 @@ const elements = {
   emailInput: document.querySelector("#email-input"),
   passwordInput: document.querySelector("#password-input"),
   googleLoginButton: document.querySelector("#google-login-button"),
+  adminPanel: document.querySelector("#admin-panel"),
+  adminMessage: document.querySelector("#admin-message"),
+  adminCreateUserForm: document.querySelector("#admin-create-user-form"),
+  adminEmailInput: document.querySelector("#admin-email-input"),
+  adminPasswordInput: document.querySelector("#admin-password-input"),
+  adminDisplayNameInput: document.querySelector("#admin-display-name-input"),
+  adminCreateUserButton: document.querySelector("#admin-create-user-button"),
   searchInput: document.querySelector("#search-input"),
   statusFilter: document.querySelector("#status-filter"),
   showCompleted: document.querySelector("#show-completed"),
@@ -90,6 +102,7 @@ const elements = {
 
 let auth;
 let db;
+let functions;
 
 function hasMissingConfig() {
   const { config } = firebaseSettings;
@@ -126,6 +139,19 @@ function setLoginMessage(message, isError = false) {
   elements.loginMessage.style.color = isError ? "#8a2222" : "";
 }
 
+function setAdminMessage(message, isError = false) {
+  if (!message) {
+    elements.adminMessage.classList.add("hidden");
+    elements.adminMessage.textContent = "";
+    return;
+  }
+
+  elements.adminMessage.classList.remove("hidden");
+  elements.adminMessage.textContent = message;
+  elements.adminMessage.style.background = isError ? "rgba(168, 46, 46, 0.12)" : "";
+  elements.adminMessage.style.color = isError ? "#8a2222" : "";
+}
+
 function setDataStatus(message) {
   elements.dataStatus.textContent = message;
 }
@@ -158,6 +184,32 @@ function getAuthErrorMessage(error) {
   }
 
   return error?.message || "登入失敗，請稍後再試。";
+}
+
+function getFunctionErrorMessage(error) {
+  const code = error?.code || "";
+
+  if (code.includes("permission-denied")) {
+    return "你不是管理員，無法建立帳號。";
+  }
+
+  if (code.includes("already-exists")) {
+    return "這個 Email 已存在。";
+  }
+
+  if (code.includes("invalid-argument")) {
+    return "資料格式不正確，請確認 Email 與密碼。";
+  }
+
+  if (code.includes("unauthenticated")) {
+    return "請先登入後再操作。";
+  }
+
+  if (code.includes("unavailable") || code.includes("not-found")) {
+    return "管理功能尚未部署完成，請先部署 Firebase Cloud Functions。";
+  }
+
+  return error?.message || "操作失敗，請稍後再試。";
 }
 
 function populateStatusFilter() {
@@ -284,6 +336,32 @@ async function loadRecords() {
   }
 }
 
+async function resolveAdminStatus() {
+  state.isAdmin = false;
+  elements.adminPanel.classList.add("hidden");
+  setAdminMessage("");
+
+  if (!functions) {
+    return;
+  }
+
+  try {
+    const getAdminStatus = httpsCallable(functions, "getAdminStatus");
+    const result = await getAdminStatus();
+    state.isAdmin = Boolean(result.data?.isAdmin);
+
+    if (state.isAdmin) {
+      elements.adminPanel.classList.remove("hidden");
+      if (result.data?.bootstrapped) {
+        setAdminMessage("已建立第一位管理員。你現在可以直接新增 Email/Password 帳號。");
+      }
+    }
+  } catch (error) {
+    console.error(error);
+    setAdminMessage(getFunctionErrorMessage(error), true);
+  }
+}
+
 async function handleEmailLogin(event) {
   event.preventDefault();
   const email = elements.emailInput.value.trim();
@@ -329,9 +407,11 @@ function handleAuthState(user) {
   if (!user) {
     elements.loginPanel.classList.remove("hidden");
     elements.appPanel.classList.add("hidden");
+    elements.adminPanel.classList.add("hidden");
     elements.signOutButton.classList.add("hidden");
     elements.authStatusPill.textContent = "未登入";
     setLoginMessage("請輸入已建立的 Firebase 帳號密碼登入。");
+    setAdminMessage("");
     renderEmpty("尚未登入");
     setDataStatus("等待登入後載入資料");
     return;
@@ -341,13 +421,50 @@ function handleAuthState(user) {
   elements.appPanel.classList.remove("hidden");
   elements.signOutButton.classList.remove("hidden");
   elements.authStatusPill.textContent = `${user.email || user.displayName || "已登入"}`;
+  resolveAdminStatus();
   loadRecords();
+}
+
+async function handleCreateUser(event) {
+  event.preventDefault();
+
+  const email = elements.adminEmailInput.value.trim();
+  const password = elements.adminPasswordInput.value.trim();
+  const displayName = elements.adminDisplayNameInput.value.trim();
+
+  if (!email || !password) {
+    setAdminMessage("請輸入 Email 與密碼。", true);
+    return;
+  }
+
+  if (password.length < 6) {
+    setAdminMessage("密碼至少需要 6 碼。", true);
+    return;
+  }
+
+  try {
+    setAdminMessage("建立帳號中...");
+    elements.adminCreateUserButton.disabled = true;
+
+    const createAuthUser = httpsCallable(functions, "createAuthUser");
+    const result = await createAuthUser({ email, password, displayName });
+    const createdEmail = result.data?.email || email;
+
+    setAdminMessage(`建立成功：${createdEmail}`);
+    elements.adminCreateUserForm.reset();
+  } catch (error) {
+    console.error(error);
+    setAdminMessage(`建立失敗：${getFunctionErrorMessage(error)}`, true);
+  } finally {
+    elements.adminCreateUserButton.disabled = false;
+  }
 }
 
 function bindEvents() {
   elements.emailLoginForm.addEventListener("submit", handleEmailLogin);
   elements.googleLoginButton.addEventListener("click", handleGoogleLogin);
   elements.signOutButton.addEventListener("click", handleSignOut);
+  elements.adminCreateUserForm.addEventListener("submit", handleCreateUser);
 
   elements.searchInput.addEventListener("input", (event) => {
     state.searchKeyword = event.target.value.trim();
@@ -403,6 +520,7 @@ function boot() {
     const app = initializeApp(normalizedConfig);
     auth = getAuth(app);
     db = getFirestore(app);
+    functions = getFunctions(app, firebaseSettings.functionsRegion || "asia-east1");
 
     if (!firebaseSettings.authProviders.google) {
       elements.googleLoginButton.classList.add("hidden");

@@ -11,6 +11,7 @@ export const firebaseSettings = {
     projectId,
     storageBucket: "electric-bike-workorders.firebasestorage.app"
   },
+  functionsRegion: "asia-east1",
   collectionName: "materialOrders",
   authProviders: {
     emailPassword: true,
